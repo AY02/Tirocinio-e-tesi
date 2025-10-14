@@ -1,0 +1,81 @@
+theory ChallengeResponseAuthenticationV1
+begin
+
+builtins: hashing
+
+/*
+ * Descrizione:
+ * Un client e un server conoscono una password segreta condivisa.
+ * Il client vuole autenticarsi presso il server senza inviare la password in chiaro.
+ * Il server è uno solo, mentre ci possono essere più client.
+ *
+ * Setup:
+ * - Viene generata una password casuale
+ * - La password viene condivisa tra il client e il server
+ *
+ * Protocollo:
+ * 1. Il client invia una challenge request al server
+ * 2. Il server risponde al client con una challenge
+ *  2.1. Il server genera un nonce casuale (challenge)
+ *  2.2. Il server invia la challenge al client
+ * 3. Il client riceve la challenge e calcola la response
+ *  3.1. Il client calcola la response come hash(challenge || password)
+ *  3.2. Il client invia la response al server
+ * 4. Il server riceve la response e verifica che sia corretta
+ *
+ * Obiettivi di sicurezza:
+ * - Se il server ha accettato un client, allora quest'ultimo deve aver risposto
+ */
+
+// Ogni client ha una password segreta condivisa con il server
+rule Setup:
+  [ Fr(~password) ]
+  --> [ !ClientRememberPassword($Client, ~password),
+        !ServerRememberPassword('Server', $Client, ~password) ]
+
+// Un client invia una challenge request al server
+rule ClientSendsChallengeRequest:
+  [ !ClientRememberPassword($Client, password) ]
+  --> [ ClientWaitingChallenge($Client, password),
+        Out(<'Challenge request', $Client>) ]
+
+// Il server riceve la challenge request, genera una challenge e la invia al client
+rule ServerSendsChallenge:
+  [ In(<'Challenge request', $Client>),
+    !ServerRememberPassword('Server', $Client, password),
+    Fr(~challenge) ]
+  --> [ ServerRememberChallenge('Server', $Client, ~challenge),
+        Out(<$Client, ~challenge>) ]
+
+// Il client riceve la challenge, calcola la response e la invia al server
+rule ClientSendsResponse:
+  [ In(<$Client, challenge>),
+    ClientWaitingChallenge($Client, password) ]
+  --[ ClientResponds($Client, challenge) ]->
+  [ Out(<$Client, h(<challenge, password>)>) ]
+
+// Il server riceve la response e verifica che sia corretta
+rule ServerVerifiesResponse:
+  [ In(<$Client, h(<challenge, password>)>),
+    !ServerRememberPassword('Server', $Client, password),
+    ServerRememberChallenge('Server', $Client, challenge) ]
+  --[ ServerAccepts('Server', $Client, challenge) ]->
+  [  ]
+
+
+// Lemma 1: Se il server ha accettato un client, allora quest'ultimo deve aver risposto prima
+lemma ServerAcceptsOnlyIfClientResponded:
+  "All client challenge #i.
+    ServerAccepts('Server', client, challenge) @i
+    ==>
+    (Ex #j. ClientResponds(client, challenge) @j & j < i)"
+
+// Lemma 2: Ogni challenge può essere accettata al più una sola volta
+lemma ChallengeUniqueness:
+  "All client challenge #i #j.
+    ServerAccepts('Server', client, challenge) @i &
+    ServerAccepts('Server', client, challenge) @j
+    ==>
+    #i = #j"
+
+end

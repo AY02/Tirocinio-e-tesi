@@ -1,0 +1,61 @@
+theory ChallengeResponseAuthenticationDigitalSignature
+begin
+
+builtins: hashing, signing
+
+// Ogni client genera una coppia di chiavi (privata, pubblica)
+rule Setup:
+  [ Fr(~sk) ]
+  --[ ClientRegisters($Client) ]->
+  [ !ClientSK($Client, ~sk),
+    !ServerPK('Server', $Client, pk(~sk)),
+    Out(pk(~sk)) ]
+
+// Un client richiede l'autenticazione al server
+rule ClientSendsAuthRequest:
+  [ !ClientSK($Client, sk) ]
+  --> [ ClientWaitingChallenge($Client, sk),
+        Out(<'AuthRequest', $Client>) ]
+
+// Il server invia una challenge al client
+rule ServerSendsChallenge:
+  [ In(<'AuthRequest', $Client>),
+    !ServerPK('Server', $Client, pk),
+    Fr(~nonce) ]
+  --> [ ServerWaitingSignature('Server', $Client, ~nonce, pk),
+        Out(<$Client, ~nonce>) ]
+
+// Il client firma h(nonce) e lo invia al server
+rule ClientSendsResponse:
+  [ In(<$Client, nonce>),
+    ClientWaitingChallenge($Client, sk) ]
+  --[ ClientResponds($Client, nonce) ]->
+  [ Out(<$Client, sign(h(nonce), sk)>) ]
+
+// Il server riceve il digest firmato e verifica che sia corretto
+// Il server accetta solo se l'equazione e' verificata
+rule ServerVerifiesResponse:
+  [ In(<$Client, signature>),
+    ServerWaitingSignature('Server', $Client, nonce, pk) ]
+  --[ Eq(verify(signature, h(nonce), pk), true),
+      ServerAccepts('Server', $Client, nonce) ]->
+  []
+
+// Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+// Non possono esistere client con più di una chiave privata
+restriction ClientHasOneKey:
+  "All client #i #j.
+    ClientRegisters(client) @i & ClientRegisters(client) @j 
+    ==> #i = #j"
+
+// Lemma 1: Se il server ha accettato un client, allora quest'ultimo deve aver risposto prima
+lemma client_authentication:
+  "All client nonce #i.
+    ServerAccepts('Server', client, nonce) @i
+    ==>
+    (Ex #j. ClientResponds(client, nonce) @j & j < i)"
+
+end
