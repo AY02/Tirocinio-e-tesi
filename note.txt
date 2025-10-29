@@ -1,0 +1,121 @@
+Tenere sempre l'approccio challenge-response senza clientRequestAuth.
+
+Refactoring e renaming:
+Challenge <-> SendChallenge
+Response <-> Reply
+Complete <-> Verify
+Questi sono i tre termini convenzionali.
+
+Facoltativo:
+- Le contromisure sign(<ch, s>) sono vulnerabili a sessioni parallele.
+- Contromisura piu' efficiente: sign(<ch, sid>), sid = Session ID.
+
+-------------------------------------------
+Ho tolto la Reveal della sk, adesso provo a rimetterla e modifico il lemma ClientResponded.
+
+C --> S1
+C --> S2
+
+Crittografia simmetrica
+
+Se S2 e S1 hanno la stessa password, ma S2 ha la password rivelata, allora S1 e' violabile.
+
+Perche' non si puo' fare direttamente KU?
+Se fai la reveal su S2, non puoi vincere banalmente su S2, ma vinci se riesci a violare S1.
+
+-------------------------------------------
+Rilevazione di cloni
+
+Automatically deteching the misure of secrets, Cremers
+
+Bindel FIDO2
+
+
+id -> identita' (nome) del server
+h -> challenge
+
+il client e' il browser, mentre il token e' la chiave.
+(client e token si possono sovrapporre).
+Ogni token ha una memoria.
+rc_T = Registration context del token T.
+E' la memoria persistente di quel token T. Implementato come un dizionario.
+rc_T[id] --> Informazioni salvate quando ti sei registrato al server id.
+sign(rc_T[id].sk, (ad, h))
+h ==> challenge
+ad ==> Struttura complessa: H(id), rc_t[id].n
+- H(id) => Hash dell'identita' del server
+- rc_t[id].n => Contatore locale di id (lato client)
+Ad ogni sessione della response, aumento il contatore di uno.
+
+Mi invento delle challenge e ti faccio fare delle firme per incrementare il contatore.
+
+A me non interessa:
+- Facoltativo: Nel protocollo vero, l'id del server mittente e' un informazione
+affidabile perche' e' in una connessione sicura.
+- Il client e' stateless.
+
+rc = registration context
+
+Il server fa questa cosa:
+n <= rc_s[cid].n (cid = client ID)
+Anche il server ha un suo contatore
+Riceve il contatore del client
+Se minore uguale, allora rifiuto l'autenticazione
+Se accetto (maggiore, cioe' il client n + 1 oppure se l'attaccante provoca dei +1 al client):
+- Imposto rc_s[cid].n = n
+E' stateful, mentre di solito e' stateless.
+
+A che serve il contatore?
+Opinione del prof:
+- Potrebbero esserci delle vulnerabilita' senza mettere vincoli aggiuntivi
+- Viene usato per il clone detection
+
+Cosa sono i cloni?
+Nel contesto di FIDO, l'attacco cloning consiste nel prendere un token (client) e ne creo una copia (lo cloni).
+Reveal(token).
+Anche se fa una Reveal, non riesce ad autenticarsi perche' il server rifiuterebbe.
+Se il client originale non lo usasse mai, in realta' l'attaccente riuscirebbe ad autenticarsi.
+Ma ad un certo punto, se il proprietario lo continua ad usare, avrei due token paralleli che continua ad autenticarsi.
+Inevitabilmente uno dei due rimane indietro con il proprio contatore.
+
+E' solo per detection del server, non interessa sapere chi e' l'attaccante o il proprietario.
+E' solo un avviso di anomalia.
+
+Consentire all'avversario di vincere anche se c'e' stata una Reveal.
+
+La Reveal e' una clone. Puoi vincere se non c'e' una reveal.
+Nell'esempio originale v2, se c'e una reveal, l'attaccante vince.
+
+Se nell'autenticazione c'e' un contatore.
+Anche se c'e' la reveal, non vincere.
+
+In realta' l'attaccante vincera' comunque:
+- Perche'?
+
+Rubo soltanto le informazioni riguardo ad un server, oppure esiste una Reveal globale "rubo tutto" di tutti i server.
+Fare reveal globale, che e' piu facile.
+
+Reallineamento lato client:
+- Attaccante rubo tutto del client
+- L'attaccante si continua ad autenticare, aumentando il suo contatore e quello del server
+- Se l'onesto resta indietro, si vedra' rifiutato
+Non vogliamo che questo avvenga.
+Il server, richiesto dall'attaccante, fa eseguire tante response fasulle al client per reallinearlo.
+E' l'attaccante che fa eseguire tante response fasulle.
+Il server non se ne accorgera' mai!
+Come lo fa l'attaccante?
+L'attaccante esegue tante ClientSendsResponse per conto del client, come se fosse un server malevolo.
+
+Difficile da fare.
+Alternativa: Quando faccio la Reveal, forzare un'autenticazione presso un server senza invocare la response del client onesto,
+cioe' usando una response dell'attaccante e senza far aumentare il contatore del client.
+
+Condizione di vittoria:
+- Se un client, che ha subito una reveal, riesce ad autenticarsi correttamente, allora il sistema non e' sicuro
+- ClientResponded
+
+Solo la chiave segreta e' privata, facoltativo per i contatori.
+
+Authenticate
+Pagina 1418
+FIDO2, CTAP 2.1, and

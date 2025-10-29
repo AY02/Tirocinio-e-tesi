@@ -1,0 +1,94 @@
+theory ManInTheMiddleSecure
+begin
+
+builtins: signing
+
+/*
+ * Premesse:
+ * - C'e' piu' di un server
+ * - C'e' piu' di un client
+ * - Un client usa una coppia di chiavi diversa per ogni server in cui si registra
+ *
+ * Obiettivo:
+ * - Far autenticare il client al server dimostrando che il client possiede la chiave privata, ma senza rivelarla
+ *
+ * Setup:
+ * - Ogni client genera una propria coppia di chiavi (sk, pk)
+ * - La chiave pubblica viene condivisa con il server in cui si registra
+ *
+ * Protocollo:
+ * - Il server genera una challenge ch e la invia al client
+ * - Il client riceve ch, calcola la response sig=pk(ch, sk) e la invia al server
+ * - Il server riceve sig e verifica la firma verify(sig, ch, pk):
+ *  - Se true, allora autentica il client
+ *  - Altrimenti, rifiutalo
+ *
+ * Obiettivo di sicurezza:
+ * - Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza
+ */
+
+// Un client genera una coppia di chiavi e si registra presso un server.
+rule Setup:
+    [ Fr(~sk) ]
+  --[ ClientRegisters($C, $S, ~sk, pk(~sk)) ]->
+    [ !ClientSK($C, $S, ~sk),
+      !ServerPK($S, $C, pk(~sk)),
+      Out(pk(~sk)) ]
+
+// Ogni client si puo' registrare ad uno stesso server al piu' una volta sola.
+// Ogni client genera una coppia di chiavi per quello stesso server al piu' una volta sola.
+restriction ClientRegistersOnce:
+  "All c s skey1 skey2 pkey1 pkey2 #i #j.
+    ClientRegisters(c, s, skey1, pkey1) @i &
+    ClientRegisters(c, s, skey2, pkey2) @j
+    ==>
+    #i = #j"
+
+// Il server invia una challenge al client.
+rule Challenge:
+    [ !ServerPK(s, c, pkey),
+    Fr(~ch) ]
+  --[ ServerSendsCH(s, c, ~ch) ]->
+    [ ServerWaitingSIG(s, c, ~ch),
+      Out(<'Challenge', s, c, ~ch>) ]
+
+// Il client riceve la challenge, la firma e la invia al server.
+rule Response:
+    [ In(<'Challenge', s, c, ch>),
+      !ClientSK(c, s, skey) ]
+  --[ ClientResponds(c, s, ch, sign(ch, skey)) ]->
+    [ Out(<'Response', c, s, ch, sign(ch, skey)>) ]
+
+// Il server riceve la firma e verifica che sia corretta.
+rule Verify:
+    [ In(<'Response', c, s, ch, sig>),
+      ServerWaitingSIG(s, c, ch),
+      !ServerPK(s, c, pkey) ]
+  --[ Eq(verify(sig, ch, pkey), true),
+      ServerAccepts(s, c, ch, sig) ]->
+    [ ]
+
+// Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
+restriction Equality:
+  "All x y #i.
+    Eq(x,y) @i
+    ==>
+    x = y"
+
+// Rivela la chiave segreta di un client.
+rule RevealSK:
+    [ !ClientSK(c, s, skey) ]
+  --[ Reveal(c) ]->
+    [ Out(skey) ]
+
+// -----------------------------LEMMI DA DIMOSTRARE-----------------------------
+
+// Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza.
+lemma ServerAcceptsOnlyIfClientResponded:
+  "All c s ch sig #i.
+    ServerAccepts(s, c, ch, sig) @i &
+    not (Ex #z. Reveal(c) @z & #z < #i)
+    ==>
+    (Ex #j. ClientResponds(c, s, ch, sig) @j & #j < #i)"
+
+end

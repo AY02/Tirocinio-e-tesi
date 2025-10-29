@@ -1,0 +1,76 @@
+theory ChallengeResponseAuthenticationMechanismSymmetric
+begin
+
+builtins: hashing
+
+/*
+ * Premesse:
+ * - C'e' un solo server
+ * - C'e' piu' di un client
+ * - Non ci interessa sapere come avviene la condivisione della password
+ * - I client e il server utilizzano la stessa funzione di hash
+ *
+ * Obiettivo:
+ * - Far autenticare il client al server senza dover inviare la password in chiaro
+ *
+ * Setup:
+ * - Viene generata una password pwd segreta, casuale ed univoca
+ * - La password viene condivisa al client e al server
+ *
+ * Protocollo:
+ * - Il server genera una challenge ch e la invia al client
+ * - Il client riceve ch, calcola la response rsp=H(ch||pwd) e la invia al server
+ * - Il server riceve rspC, calcola lo stesso digest rspS=H(ch||pwd) e verifica che rspC==rspS:
+ *  - Se true, allora autentica il client
+ *  - Altrimenti, rifiutalo
+ *
+ * Obiettivo di sicurezza:
+ * - Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza
+ */
+
+// Generazione della password e condivisione con il client e il server.
+rule Setup:
+    [ Fr(~pwd) ]
+  --> [ !ClientPWD($C, ~pwd),
+        !ServerPWD($C, ~pwd) ]
+
+// Il server genera una challenge e la invia al client.
+rule Challenge:
+    [ !ServerPWD(c, pwd),
+      Fr(~ch) ]
+  --> [ ServerWaitingRSP(c, ~ch),
+        Out(<c, ~ch>) ]
+
+// Il client riceve la challenge, calcola la response e la invia al server.
+rule Response:
+    [ In(<c, ch>),
+      !ClientPWD(c, pwd) ]
+  --[ ClientResponds(c, ch) ]->
+    [ Out(<c, h(<ch, pwd>)>) ]
+
+// Il server riceve la response e verifica che sia corretta.
+rule Verify:
+    [ In(<c, rsp>),
+      ServerWaitingRSP(c, ch),
+      !ServerPWD(c, pwd) ]
+  --[ Eq(rsp, h(<ch, pwd>)),
+      ServerAccepts(c, ch) ]->
+    [ ]
+
+// Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
+restriction Equality:
+  "All x y #i.
+    Eq(x,y) @i
+    ==>
+    x = y"
+
+// -----------------------------LEMMI DA DIMOSTRARE-----------------------------
+
+// Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza.
+lemma ServerAcceptsOnlyIfClientResponded:
+  "All c ch #i.
+    ServerAccepts(c, ch) @i
+    ==>
+    (Ex #j. ClientResponds(c, ch) @j & #j < #i)"
+
+end
