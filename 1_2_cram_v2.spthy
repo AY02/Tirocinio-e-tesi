@@ -76,7 +76,7 @@ rule RevealSK:
 // Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
 restriction Equality:
   "All x y #i.
-    Eq(x,y) @i
+    Eq(x, y) @i
     ==>
     x = y"
 

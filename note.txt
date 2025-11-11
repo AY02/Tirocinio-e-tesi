@@ -110,8 +110,12 @@ Difficile da fare.
 Alternativa: Quando faccio la Reveal, forzare un'autenticazione presso un server senza invocare la response del client onesto,
 cioe' usando una response dell'attaccante e senza far aumentare il contatore del client.
 
+Intende dire che se viene fatta la Reveal, il client non sara' piu' in grado di fare richieste di autenticazione, ma solo l'attaccante potra' farle?
+Oppure intende dire che il client le puo' fare, ma l'attaccante le intercetta in modo tale da modificare il contatore con quello dell'attaccante?
+
 Condizione di vittoria:
 - Se un client, che ha subito una reveal, riesce ad autenticarsi correttamente, allora il sistema non e' sicuro
+  ==> Perché l'attaccante ha riallineato
 - ClientResponded
 
 Solo la chiave segreta e' privata, facoltativo per i contatori.

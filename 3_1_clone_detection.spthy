@@ -1,38 +1,17 @@
-theory ManInTheMiddleSecure
+theory CloneDetection
 begin
 
-builtins: signing
-
-/*
- * Premesse:
- * - C'e' piu' di un server
- * - C'e' piu' di un client
- * - Un client usa una coppia di chiavi diversa per ogni server in cui si registra
- *
- * Obiettivo:
- * - Far autenticare il client al server dimostrando che il client possiede la chiave privata, ma senza rivelarla
- *
- * Setup:
- * - Ogni client genera una propria coppia di chiavi (sk, pk)
- * - La chiave pubblica viene condivisa con il server in cui si registra
- *
- * Protocollo:
- * - Il server genera una challenge ch e la invia al client
- * - Il client riceve ch, calcola la response sig=pk(ch, sk) e la invia al server
- * - Il server riceve sig e verifica la firma verify(sig, ch, pk):
- *  - Se true, allora autentica il client
- *  - Altrimenti, rifiutalo
- *
- * Obiettivo di sicurezza:
- * - Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza
- */
+builtins: signing, natural-numbers
 
 // Un client genera una coppia di chiavi e si registra presso un server.
+// Inizializzazione dei contatori.
 rule Setup:
     [ Fr(~sk) ]
-  --[ ClientRegisters($C, $S, ~sk, pk(~sk)) ]->
-    [ !ClientSK($C, $S, ~sk),
-      !ServerPK($S, $C, pk(~sk)),
+  --[ ClientRegisters($c, $s, ~sk, pk(~sk)) ]->
+    [ !ClientSK($c, $s, ~sk),
+      !ServerPK($s, $c, pk(~sk)),
+      ClientC($c, $s, %1),
+      ServerC($s, $c, %1),
       Out(pk(~sk)) ]
 
 // Ogni client si puo' registrare ad uno stesso server al piu' una volta sola.
@@ -52,21 +31,27 @@ rule Challenge:
     [ ServerWaitingSIG(s, c, ~ch),
       Out(<'Challenge', s, c, ~ch>) ]
 
-// Il client riceve la challenge, la firma e la invia al server.
+// Il client riceve la challenge, la firma, incrementa il suo contatore e invia (firma, contatore) al server.
 rule Response:
+  let %next_n = %n %+ %1
+  in
     [ In(<'Challenge', s, c, ch>),
+      ClientC(c, s, %n),
       !ClientSK(c, s, skey) ]
   --[ ClientResponds(c, s, ch, sign(ch, skey)) ]->
-    [ Out(<'Response', c, s, ch, sign(ch, skey)>) ]
+    [ ClientC(c, s, %next_n),
+      Out(<'Response', c, s, ch, sign(ch, skey), %next_n>) ]
 
-// Il server riceve la firma e verifica che sia corretta.
+// Il server riceve la firma, confronta i contatori e verifica che la firma sia corretta.
 rule Verify:
-    [ In(<'Response', c, s, ch, sig>),
+    [ In(<'Response', c, s, ch, sig, %n_c>),
       ServerWaitingSIG(s, c, ch),
+      ServerC(s, c, %n_s),
       !ServerPK(s, c, pkey) ]
-  --[ Eq(verify(sig, ch, pkey), true),
+  --[ LessThan(%n_s, %n_c),
+      Eq(verify(sig, ch, pkey), true),
       ServerAccepts(s, c, ch, sig) ]->
-    [ ]
+    [ ServerC(s, c, %n_c) ]
 
 // Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
 restriction Equality:
@@ -75,7 +60,14 @@ restriction Equality:
     ==>
     x = y"
 
-// Rivela la chiave segreta di un client.
+// Ogni volta che viene usata la disequazione LessThan(x, y), x deve essere minore di y.
+restriction LessThan:
+  "All x y #i.
+    LessThan(x, y) @i
+    ==>
+    x << y"
+
+// Rivela una chiave segreta di un client (equivale alla clonazione).
 rule RevealSK:
     [ !ClientSK(c, s, skey) ]
   --[ Reveal(c, s) ]->
@@ -90,5 +82,14 @@ lemma ServerAcceptsOnlyIfClientResponded:
     not (Ex #z. Reveal(c, s) @z & #z < #i)
     ==>
     (Ex #j. ClientResponds(c, s, ch, sig) @j & #j < #i)"
+
+// Se il client e' stato clonato, allora non riesce piu' ad autenticarsi.
+// Falso: L'attaccante riallinea il contatore del client.
+lemma ClonedClientCantAuthenticate:
+  "All c s ch sig #i.
+    ClientResponds(c, s, ch, sig) @i &
+    (Ex #z. Reveal(c, s) @z & #z < #i)
+    ==>
+    not (Ex #j. ServerAccepts(s, c, ch, sig) @j & #i < #j)"
 
 end
