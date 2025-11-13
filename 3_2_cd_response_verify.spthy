@@ -1,4 +1,4 @@
-theory CloneDetection
+theory CloneDetectionResponseVerify
 begin
 
 builtins: signing, natural-numbers
@@ -12,6 +12,7 @@ rule Setup:
       !ServerPK($s, $c, pk(~sk)),
       ClientC($c, $s, %1),
       ServerC($s, $c, %1),
+      NotReveal($c, $s, ~sk),
       Out(pk(~sk)) ]
 
 // Ogni client si puo' registrare ad uno stesso server al piu' una volta sola.
@@ -29,12 +30,14 @@ restriction ClientRegistersOnce:
 rule RevealSK:
     [ !ClientSK(c, s, skey),
       ClientC(c, s, %n_c),
-      ServerC(s, c, %n_s) ]
+      ServerC(s, c, %n_s),
+      NotReveal(c, s, skey) ]
   --[ Reveal(c, s) ]->
     [ ClientC(c, s, %n_c),
       ServerC(s, c, %n_c %+ %1),
       Out(skey) ]
 
+/* Diventa obsoleto perche' il fatto NotReveal garantisce gia' l'irripetibilita' della reveal.
 // La reveal della chiave segreta di un client puo' essere fatta una sola volta.
 restriction RevealOnce:
   "All c s #i #j.
@@ -42,6 +45,7 @@ restriction RevealOnce:
     Reveal(c, s) @j
     ==>
     #i = #j"
+*/
 
 // Il server invia una challenge al client.
 rule Challenge:
@@ -58,9 +62,11 @@ rule Response:
   in
     [ In(<'Challenge', s, c, ch>),
       ClientC(c, s, %n),
-      !ClientSK(c, s, skey) ]
+      !ClientSK(c, s, skey),
+      NotReveal(c, s, ~sk) ]
   --[ ClientResponds(c, s, ch, sign(ch, skey), %next_n) ]->
     [ ClientC(c, s, %next_n),
+      NotReveal(c, s, ~sk),
       Out(<'Response', c, s, ch, sign(ch, skey), %next_n>) ]
 
 // Il server riceve la firma, confronta i contatori e verifica che la firma sia corretta.
@@ -73,6 +79,22 @@ rule Verify:
       Eq(verify(sig, ch, pkey), true),
       ServerAccepts(s, c, ch, sig, %n_c) ]->
     [ ServerC(s, c, %n_c) ]
+
+// Diamo la possibilita' al client di autenticarsi anche dopo essere stato clonato.
+rule ResponseVerify:
+  let %next_n_c = %n_c %+ %1
+  in
+    [ In(<'Challenge', s, c, ch>),
+      ClientC(c, s, %n_c),
+      ServerC(s, c, %n_s),
+      !ClientSK(c, s, skey),
+      !ServerPK(s, c, pkey) ]
+  --[ ClientResponds(c, s, ch, sign(ch, skey), %next_n_c),
+      LessThan(%n_s, %next_n_c),
+      Eq(verify(sign(ch, skey), ch, pkey), true),
+      ServerAccepts(s, c, ch, sign(ch, skey), %next_n_c) ]->
+    [ ClientC(c, s, %next_n_c),
+      ServerC(s, c, %next_n_c) ]
 
 // Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
 restriction Equality:

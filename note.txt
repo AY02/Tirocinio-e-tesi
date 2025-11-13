@@ -123,3 +123,37 @@ Solo la chiave segreta e' privata, facoltativo per i contatori.
 Authenticate
 Pagina 1418
 FIDO2, CTAP 2.1, and
+
+
+
+
+
+
+
+Quando faccio la Reveal, devo forzare un'autenticazione con il server.
+Autenticazione dell'avversario.
+L'attaccante puo' inviare il contatore che vuole lui.
+Il server riceve il contatore del client, ma non modifica il suo contatore (del server).
+
+Attaccante fa la reveal, ottiene sk.
+Poi fa una response spacciandosi per il client.
+Poi il server fa la verify.
+
+Non posso fare response una volta che ho fatto la Reveal.
+
+regola alternativa:
+
+
+Il client non puo' piu' fare response, ma gli diamo un altro modo in cui fa response-verify.
+Perche' sto emulando un contesto in cui un'autenticazione in cui la response non viene persa.
+
+Se c'e' reveal, non fare la response al client.
+Non va bene, banalmente accettato.
+
+ResponseVerify: L'attaccante fa fare delle response al client e quest'ultime verranno sicuramente verificate dal client se si usano contatori.
+Pero' coi contatori 
+
+Provare a farlo con e senza contatore.
+
+// Verificare che il client abbia sempre un contatore piu' grande del server
+// L'attaccante clona e si autentica con il server.
