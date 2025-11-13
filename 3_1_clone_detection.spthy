@@ -52,7 +52,6 @@ rule Challenge:
       Out(<'Challenge', s, c, ~ch>) ]
 
 // Il client riceve la challenge, la firma, incrementa il suo contatore e invia (firma, contatore) al server.
-// Se e' stato clonato, il client non puo' piu' rispondere.
 rule Response:
   let %next_n = %n %+ %1
   in
@@ -91,22 +90,23 @@ restriction LessThan:
 // -----------------------------LEMMI DA DIMOSTRARE-----------------------------
 
 // Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza.
+// I contatori sono differenziati perche' l'attaccante puo' alterare il contatore del client.
 lemma ServerAcceptsOnlyIfClientResponded:
-  "All c s ch sig n #i.
-    ServerAccepts(s, c, ch, sig, n) @i &
-    not (Ex #j. Reveal(c, s) @j & #j < #i)
+  "All c s ch sig n #i2.
+    ServerAccepts(s, c, ch, sig, n) @i2 &
+    not (Ex #i. Reveal(c, s) @i)
     ==>
-    (Ex n #z. ClientResponds(c, s, ch, sig, n) @z & #z < #i)"
+    (Ex m #i1. ClientResponds(c, s, ch, sig, m) @i1 & #i1 < #i2)"
 
 // Se il client e' stato clonato, allora non riesce piu' ad autenticarsi.
 // Falso: L'attaccante riallinea il contatore del client.
 lemma ClonedClientCantAuthenticate:
-  "All c s ch sig n #i #j.
-    Reveal(c, s) @i &
-    ClientResponds(c, s, ch, sig, n) @j &
-    #i < #j
+  "All c s ch sig n #i1 #i2.
+    Reveal(c, s) @i1 &
+    ClientResponds(c, s, ch, sig, n) @i2 &
+    #i1 < #i2
     ==>
-    not (Ex #z. ServerAccepts(s, c, ch, sig, n) @z & #i < #z)"
+    not (Ex #i3. ServerAccepts(s, c, ch, sig, n) @i3 & #i2 < #i3)"
 
 // Riallineamento banale del contatore del client.
 lemma ClientRealignmentExists:

@@ -12,7 +12,6 @@ rule Setup:
       !ServerPK($s, $c, pk(~sk)),
       ClientC($c, $s, %1),
       ServerC($s, $c, %1),
-      NotReveal($c, $s, ~sk),
       Out(pk(~sk)) ]
 
 // Ogni client si puo' registrare ad uno stesso server al piu' una volta sola.
@@ -30,14 +29,12 @@ restriction ClientRegistersOnce:
 rule RevealSK:
     [ !ClientSK(c, s, skey),
       ClientC(c, s, %n_c),
-      ServerC(s, c, %n_s),
-      NotReveal(c, s, skey) ]
+      ServerC(s, c, %n_s) ]
   --[ Reveal(c, s) ]->
     [ ClientC(c, s, %n_c),
       ServerC(s, c, %n_c %+ %1),
       Out(skey) ]
 
-/* Diventa obsoleto perche' il fatto NotReveal garantisce gia' l'irripetibilita' della reveal.
 // La reveal della chiave segreta di un client puo' essere fatta una sola volta.
 restriction RevealOnce:
   "All c s #i #j.
@@ -45,7 +42,6 @@ restriction RevealOnce:
     Reveal(c, s) @j
     ==>
     #i = #j"
-*/
 
 // Il server invia una challenge al client.
 rule Challenge:
@@ -56,18 +52,23 @@ rule Challenge:
       Out(<'Challenge', s, c, ~ch>) ]
 
 // Il client riceve la challenge, la firma, incrementa il suo contatore e invia (firma, contatore) al server.
-// Se e' stato clonato, il client non puo' piu' rispondere.
 rule Response:
   let %next_n = %n %+ %1
   in
     [ In(<'Challenge', s, c, ch>),
       ClientC(c, s, %n),
-      !ClientSK(c, s, skey),
-      NotReveal(c, s, ~sk) ]
-  --[ ClientResponds(c, s, ch, sign(ch, skey), %next_n) ]->
+      !ClientSK(c, s, skey) ]
+  --[ ResponseUsed(c, s),
+      ClientResponds(c, s, ch, sign(ch, skey), %next_n) ]->
     [ ClientC(c, s, %next_n),
-      NotReveal(c, s, ~sk),
       Out(<'Response', c, s, ch, sign(ch, skey), %next_n>) ]
+
+// Dopo la reveal, il client e l'attaccante non possono piu' usare Response.
+restriction NoResponseAfterReveal:
+  "not (Ex c s #i1 #i2.
+    Reveal(c, s) @i1 &
+    ResponseUsed(c, s) @i2 &
+    #i1 < #i2)"
 
 // Il server riceve la firma, confronta i contatori e verifica che la firma sia corretta.
 rule Verify:
@@ -75,26 +76,45 @@ rule Verify:
       ServerWaitingSIG(s, c, ch),
       ServerC(s, c, %n_s),
       !ServerPK(s, c, pkey) ]
-  --[ LessThan(%n_s, %n_c),
+  --[ VerifyUsed(c, s),
+      LessThan(%n_s, %n_c),
       Eq(verify(sig, ch, pkey), true),
       ServerAccepts(s, c, ch, sig, %n_c) ]->
     [ ServerC(s, c, %n_c) ]
 
+// Dopo la reveal, il server non puo' piu' fare la Verify.
+restriction NoVerifyAfterReveal:
+  "not (Ex c s #i1 #i2.
+    Reveal(c, s) @i1 &
+    VerifyUsed(c, s) @i2 &
+    #i1 < #i2)"
+
 // Diamo la possibilita' al client di autenticarsi anche dopo essere stato clonato.
+// Impediamo all'attaccante di fare il riallineamento.
+// Se il client risponde, il server lo deve autenticare.
 rule ResponseVerify:
   let %next_n_c = %n_c %+ %1
+      sig = sign(ch, skey)
   in
     [ In(<'Challenge', s, c, ch>),
+      ServerWaitingSIG(s, c, ch),
       ClientC(c, s, %n_c),
       ServerC(s, c, %n_s),
       !ClientSK(c, s, skey),
       !ServerPK(s, c, pkey) ]
-  --[ ClientResponds(c, s, ch, sign(ch, skey), %next_n_c),
+  --[ ResponseVerifyUsed(c, s),
+      ClientResponds(c, s, ch, sig, %next_n_c),
       LessThan(%n_s, %next_n_c),
-      Eq(verify(sign(ch, skey), ch, pkey), true),
-      ServerAccepts(s, c, ch, sign(ch, skey), %next_n_c) ]->
+      Eq(verify(sig, ch, pkey), true),
+      ServerAccepts(s, c, ch, sig, %next_n_c) ]->
     [ ClientC(c, s, %next_n_c),
       ServerC(s, c, %next_n_c) ]
+
+// Prima della reveal, non si puo' usare ResponseVerify.
+restriction OnlyResponseVerifyAfterReveal:
+  "not (Ex c s #i2.
+    ResponseVerifyUsed(c, s) @i2 &
+    not (Ex #i1. Reveal(c, s) @i1 & #i1 < #i2))"
 
 // Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
 restriction Equality:
@@ -113,34 +133,35 @@ restriction LessThan:
 // -----------------------------LEMMI DA DIMOSTRARE-----------------------------
 
 // Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza.
+// I contatori sono differenziati perche' l'attaccante puo' alterare il contatore del client.
 lemma ServerAcceptsOnlyIfClientResponded:
-  "All c s ch sig n #i.
-    ServerAccepts(s, c, ch, sig, n) @i &
-    not (Ex #j. Reveal(c, s) @j & #j < #i)
+  "All c s ch sig n #i2.
+    ServerAccepts(s, c, ch, sig, n) @i2 &
+    not (Ex #i. Reveal(c, s) @i)
     ==>
-    (Ex n #z. ClientResponds(c, s, ch, sig, n) @z & #z < #i)"
+    (Ex m #i1. ClientResponds(c, s, ch, sig, m) @i1 & #i1 < #i2)"
 
 // Se il client e' stato clonato, allora non riesce piu' ad autenticarsi.
-// Falso: L'attaccante riallinea il contatore del client.
+// Vero: L'attaccante non puo' piu' riallineare il contatore del client.
 lemma ClonedClientCantAuthenticate:
-  "All c s ch sig n #i #j.
-    Reveal(c, s) @i &
-    ClientResponds(c, s, ch, sig, n) @j &
-    #i < #j
+  "All c s ch sig n #i1 #i2.
+    Reveal(c, s) @i1 &
+    ClientResponds(c, s, ch, sig, n) @i2 &
+    #i1 < #i2
     ==>
-    not (Ex #z. ServerAccepts(s, c, ch, sig, n) @z & #i < #z)"
+    not (Ex #i3. ServerAccepts(s, c, ch, sig, n) @i3 & #i2 < #i3)"
 
 // Riallineamento banale del contatore del client.
 lemma ClientRealignmentExists:
   exists-trace
-  "Ex c s skey pkey ch sig f_ch f_sig n2 n3 #i1 #i2 #i3 #i4 #i5 #i6.
+  "Ex c s skey pkey ch sig f_ch f_sig n2 n3 #i1 #i2 #i3 #i4 #i5.
     ClientRegisters(c, s, skey, pkey) @i1 &
     Reveal(c, s) @i2 &
     ClientResponds(c, s, f_ch, f_sig, n2) @i3 &
     ServerSendsCH(s, c, ch) @i4 &
     ClientResponds(c, s, ch, sig, n3) @i5 &
-    ServerAccepts(s, c, ch, sig, n3) @i6 &
-    #i1 < #i2 & #i2 < #i3 & #i3 < #i4 & #i4 < #i5 & #i5 < #i6 &
+    ServerAccepts(s, c, ch, sig, n3) @i5 &
+    #i1 < #i2 & #i2 < #i3 & #i3 < #i4 & #i4 < #i5 &
     (All c s ch sig n #i.
       ClientResponds(c, s, ch, sig, n) @i
       ==>
