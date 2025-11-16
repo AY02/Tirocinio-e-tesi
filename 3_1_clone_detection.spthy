@@ -58,19 +58,19 @@ rule Response:
     [ In(<'Challenge', s, c, ch>),
       ClientC(c, s, %n),
       !ClientSK(c, s, skey) ]
-  --[ ClientResponds(c, s, ch, sign(ch, skey), %next_n) ]->
+  --[ ClientResponds(c, s, ch) ]->
     [ ClientC(c, s, %next_n),
-      Out(<'Response', c, s, ch, sign(ch, skey), %next_n>) ]
+      Out(<'Response', c, s, ch, %next_n, sign(<ch, %next_n>, skey)>) ]
 
 // Il server riceve la firma, confronta i contatori e verifica che la firma sia corretta.
 rule Verify:
-    [ In(<'Response', c, s, ch, sig, %n_c>),
+    [ In(<'Response', c, s, ch, %n_c, sig>),
       ServerWaitingSIG(s, c, ch),
       ServerC(s, c, %n_s),
       !ServerPK(s, c, pkey) ]
   --[ LessThan(%n_s, %n_c),
-      Eq(verify(sig, ch, pkey), true),
-      ServerAccepts(s, c, ch, sig, %n_c) ]->
+      Eq(verify(sig, <ch, %n_c>, pkey), true),
+      ServerAccepts(s, c, ch) ]->
     [ ServerC(s, c, %n_c) ]
 
 // Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
@@ -89,38 +89,38 @@ restriction LessThan:
 
 // -----------------------------LEMMI DA DIMOSTRARE-----------------------------
 
-// Se il server ha accettato un client, allora quest'ultimo deve aver risposto in precedenza.
-// I contatori sono differenziati perche' l'attaccante puo' alterare il contatore del client.
+// Se il server ha accettato un client e non e' stato clonato, allora quest'ultimo deve aver risposto in precedenza.
 lemma ServerAcceptsOnlyIfClientResponded:
-  "All c s ch sig n #i2.
-    ServerAccepts(s, c, ch, sig, n) @i2 &
-    not (Ex #i. Reveal(c, s) @i)
+  "All c s ch #i3.
+    ServerAccepts(s, c, ch) @i3 &
+    not (Ex #i1. Reveal(c, s) @i1 & #i1 < #i3)
     ==>
-    (Ex m #i1. ClientResponds(c, s, ch, sig, m) @i1 & #i1 < #i2)"
+    (Ex #i2. ClientResponds(c, s, ch) @i2 & #i2 < #i3)"
 
-// Se il client e' stato clonato, allora non riesce piu' ad autenticarsi.
+// Se il client e' stato clonato e prova ad autenticarsi, allora il server lo rifiuta.
 // Falso: L'attaccante riallinea il contatore del client.
 lemma ClonedClientCantAuthenticate:
-  "All c s ch sig n #i1 #i2.
+  "All c s ch #i1 #i2.
     Reveal(c, s) @i1 &
-    ClientResponds(c, s, ch, sig, n) @i2 &
+    ClientResponds(c, s, ch) @i2 &
     #i1 < #i2
     ==>
-    not (Ex #i3. ServerAccepts(s, c, ch, sig, n) @i3 & #i2 < #i3)"
+    not (Ex #i3. ServerAccepts(s, c, ch) @i3 & #i2 < #i3)"
 
 // Riallineamento banale del contatore del client.
 lemma ClientRealignmentExists:
   exists-trace
-  "Ex c s skey pkey ch sig f_ch f_sig n2 n3 #i1 #i2 #i3 #i4 #i5 #i6.
+  "Ex c s skey pkey ch f_ch #i1 #i2 #i3 #i4 #i5 #i6.
     ClientRegisters(c, s, skey, pkey) @i1 &
     Reveal(c, s) @i2 &
-    ClientResponds(c, s, f_ch, f_sig, n2) @i3 &
+    ClientResponds(c, s, f_ch) @i3 &
     ServerSendsCH(s, c, ch) @i4 &
-    ClientResponds(c, s, ch, sig, n3) @i5 &
-    ServerAccepts(s, c, ch, sig, n3) @i6 &
+    ClientResponds(c, s, ch) @i5 &
+    ServerAccepts(s, c, ch) @i6 &
     #i1 < #i2 & #i2 < #i3 & #i3 < #i4 & #i4 < #i5 & #i5 < #i6 &
-    (All c s ch sig n #i.
-      ClientResponds(c, s, ch, sig, n) @i
+    // Limita eventuali altre response invocate dall'attaccante
+    (All c s ch #i.
+      ClientResponds(c, s, ch) @i
       ==>
       (#i = #i3 | #i = #i5))"
 

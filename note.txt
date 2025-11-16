@@ -157,3 +157,77 @@ Provare a farlo con e senza contatore.
 
 // Verificare che il client abbia sempre un contatore piu' grande del server
 // L'attaccante clona e si autentica con il server.
+
+
+********************************************************************************************************************************
+
+HASH HASH HASH CHAIN CHAIN CHAIN
+
+Con le chain hash, non ci devono essere upper bound.
+
+Problema:
+I sistemi di clone detection tramite contatori sono trace-independent, cioe':
+- Il client viene clonato in stato S1_1 (originale) e S2_1 (attaccante)
+- Al momento del clonaggio, vale che S1_1 = S2_1
+- Al momento dell'autenticazione dell'attaccante con la challenge X del server, allora S2_1 si trasforma S2_2
+- Quando l'attaccante invia una challenge Y al client, allora S1_1 si trasforma in S1_2
+- L'obiettivo e' quello di far equivalere S2_2 con S1_2
+- Se tramite due challenge diverse X != Y si ha che S_2 = S_1, allora la detection si dice trace-independent
+Anche usando challenge diverse, si ottiene comunque lo stesso stato (contatore).
+
+Cos'e' una chain hash?
+Dato un d_0 = H(...), allora d_i(v) = H(v|d_i-1).
+Il protocollo e' stateful, cioe' gli attori mantengono gli stati della chain hash.
+
+Setup del client e del server:
+- d_0 = H(random)
+
+Il server invia una challenge X al client.
+Il client calcola la response R e poi fa d_1_c = H(<X, R>, d_0) e lo invia al server.
+Il server riceve la response R e calcola anche lui d_1 = H(<X, R>|d_0), verificando che d_0 = d_0 del client.
+
+L'attaccante clona il client e copia la sua chain hash d.
+L'attaccante invia una challenge X al client.
+Il client calcola la response R1 e poi fa d_2 = H(<X, R1>, d_1).
+
+Il server invia una challenge Y al client.
+Il client calcola la response R2 e poi fa d_3 = H(<Y, R2>, d_2) e lo invia al server.
+Il server riceve la response R2 e calcola anche lui d_2 = H(<Y, R2>|d_3), verificando che d_1 = d_3 del client.
+Il server vede che d_1 != d_3 ==> Clone detection!
+
+
+Ogni volta che il server riceve una response dal client, allora aggiorna il suo chain hash con la risposta del client.
+==> Accumulatore crittografico.
+Nella hash si mette la challenge, la response e lo stato precedente.
+Poi si va a firmare l'hash.
+
+Problema:
+L'attaccante invia tante challenge al client.
+Il client aggiorna il suo stato, ma e' disallineato con il server.
+Il client e il server non possono piu' a comunicare.
+
+L'attaccante si autentica e poi riallinea.
+
+Diamo l'abilita' del client di rifiutare le response che non sono del server.
+Per ogni challenge-response-verify, il client salva un fatto.
+Tuttavia, la response ha un po' di randomness.
+Il server autentica il client, ma quando un attaccante invia una challenge al client, quest'ultimo generera' una cosa
+diversa!
+
+********************************************************************************************************
+
+Meccanismo di self-healing:
+Ripristinare lo stato violato del client.
+Non esiste self-healing senza dati random.
+Se ad ogni transazione ci fosse un po' di randomness generato dal client stesso, allora puo' essere possibile
+fare operazioni di self-healing.
+
+
+********************************************************************************************************
+Il client salva ogni response e challenge fatta (mondo ideale).
+Praticamente salvo l'intera traccia.
+Quando faccio il cloning, l'attaccante prende anche tutte le tracce salvate dal client.
+
+
+(Non ha resinking, "se faccio delle response")
+Nella vita reale esistono accumulatori a bassa memoria con crittografia asimmetrica.
