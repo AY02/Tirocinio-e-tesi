@@ -167,7 +167,7 @@ lemma ClientRealignmentExists:
     ServerAccepts(s, c, ch) @i6 &
     #i1 < #i2 & #i2 < #i3 & #i3 < #i4 & #i4 < #i5 & #i5 < #i6 &
     // Limita eventuali altre response invocate dall'attaccante
-    (All c s ch #i.
+    (All ch #i.
       ClientResponds(c, s, ch) @i
       ==>
       (#i = #i3 | #i = #i5))"

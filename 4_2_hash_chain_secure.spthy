@@ -1,17 +1,31 @@
-theory CloneDetection
+theory HashChainWithDetection
 begin
 
-builtins: signing, natural-numbers
+builtins: signing, hashing, natural-numbers
+
+// Limite per la lunghezza degli hash chain perche' altrimenti si hanno loop infiniti sulle response.
+restriction HashChainUpperBoundClient:
+  "All c s hash n #i.
+    ClientHash(c, s, hash, n) @i
+    ==>
+    n << %1 %+ %1 %+ %1 %+ %1 %+ %1"
+
+restriction HashChainUpperBoundServer:
+  "All c s hash m #i.
+    ServerHash(s, c, hash, m) @i
+    ==>
+    m << %1 %+ %1 %+ %1 %+ %1 %+ %1"
 
 // Un client genera una coppia di chiavi e si registra presso un server.
-// Inizializzazione dei contatori.
+// Inizializzazione degli hash chain.
 rule Setup:
-    [ Fr(~sk) ]
-  --[ ClientRegisters($c, $s, ~sk, pk(~sk)) ]->
-    [ !ClientSK($c, $s, ~sk),
-      !ServerPK($s, $c, pk(~sk)),
-      ClientC($c, $s, %1),
-      ServerC($s, $c, %1),
+    [ Fr(~sk),
+      Fr(~nonce) ]
+  --[ ClientRegisters($C, $S, ~sk, pk(~sk)) ]->
+    [ !ClientSK($C, $S, ~sk),
+      !ServerPK($S, $C, pk(~sk)),
+      ClientH($C, $S, h(~nonce), %1),
+      ServerH($S, $C, h(~nonce), %1),
       Out(pk(~sk)) ]
 
 // Ogni client si puo' registrare ad uno stesso server al piu' una volta sola.
@@ -23,17 +37,19 @@ restriction ClientRegistersOnce:
     ==>
     #i = #j"
 
-// Rivela la chiave segreta di un client (equivale alla clonazione).
-// Effettua un'autenticazione riuscita dell'attaccante.
-// Il contatore del server viene incrementato, ma quello del client resta invariato.
+// Rivela la chiave segreta (equivale alla clonazione).
+// Simulazione di un'autenticazione riuscita dell'attaccante.
+// L'hash chain del server viene modificato, ma quello del client resta invariato.
 rule RevealSK:
+  let sig = sign(~f_ch, skey)
+      new_hash_s = h(<~f_ch, sig, old_hash_s>)
+  in
     [ !ClientSK(c, s, skey),
-      ClientC(c, s, %n_c),
-      ServerC(s, c, %n_s) ]
+      ServerH(s, c, old_hash_s, %len),
+      Fr(~f_ch) ]
   --[ Reveal(c, s) ]->
-    [ ClientC(c, s, %n_c),
-      ServerC(s, c, %n_c %+ %1),
-      Out(skey) ]
+    [ ServerH(s, c, new_hash_s, %len %+ %1),
+      Out(<skey, ~f_ch>) ]
 
 // La reveal della chiave segreta di un client puo' essere fatta una sola volta.
 restriction RevealOnce:
@@ -51,27 +67,34 @@ rule Challenge:
     [ ServerWaitingSIG(s, c, ~ch),
       Out(<'Challenge', s, c, ~ch>) ]
 
-// Il client riceve la challenge, la firma, incrementa il suo contatore e invia (firma, contatore) al server.
+// Il client riceve la challenge, la firma, calcola l'hash e la invia al server.
 rule Response:
-  let %next_n = %n %+ %1
+  let r_ch = <~nonce, ch>
+      sig = sign(r_ch, skey)
+      next_hash = h(<r_ch, sig, hash>)
   in
     [ In(<'Challenge', s, c, ch>),
-      ClientC(c, s, %n),
-      !ClientSK(c, s, skey) ]
-  --[ ClientResponds(c, s, ch) ]->
-    [ ClientC(c, s, %next_n),
-      Out(<'Response', c, s, ch, %next_n, sign(<ch, %next_n>, skey)>) ]
+      ClientH(c, s, hash, %len),
+      !ClientSK(c, s, skey),
+      Fr(~nonce) ]
+  --[ ClientResponds(c, s, ch),
+      ClientHash(c, s, hash, %len %+ %1) ]->
+    [ ClientH(c, s, next_hash, %len %+ %1),
+      Out(<'Response', c, s, r_ch, sig, next_hash>) ]
 
-// Il server riceve la firma, confronta i contatori e verifica che la firma sia corretta.
+// Il server riceve la firma, confronta gli hash e verifica che la firma sia corretta.
 rule Verify:
-    [ In(<'Response', c, s, ch, %n_c, sig>),
+  let new_hash_s = h(<ch, sig, old_hash_s>)
+  in
+    [ In(<'Response', c, s, ch, sig, hash_c>),
       ServerWaitingSIG(s, c, ch),
-      ServerC(s, c, %n_s),
+      ServerH(s, c, old_hash_s, %len),
       !ServerPK(s, c, pkey) ]
-  --[ LessThan(%n_s, %n_c),
-      Eq(verify(sig, <ch, %n_c>, pkey), true),
+  --[ Eq(new_hash_s, hash_c),
+      Eq(verify(sig, ch, pkey), true),
+      ServerHash(s, c, new_hash_s, %len %+ %1),
       ServerAccepts(s, c, ch) ]->
-    [ ServerC(s, c, %n_c) ]
+    [ ServerH(s, c, new_hash_s, %len %+ %1) ]
 
 // Ogni volta che viene usata l'equazione Eq(x, y), x deve essere uguale a y.
 restriction Equality:
@@ -79,13 +102,6 @@ restriction Equality:
     Eq(x, y) @i
     ==>
     x = y"
-
-// Ogni volta che viene usata la disequazione LessThan(x, y), x deve essere minore di y.
-restriction LessThan:
-  "All x y #i.
-    LessThan(x, y) @i
-    ==>
-    x << y"
 
 // -----------------------------LEMMI DA DIMOSTRARE-----------------------------
 
@@ -98,7 +114,7 @@ lemma ServerAcceptsOnlyIfClientResponded:
     (Ex #i2. ClientResponds(c, s, ch) @i2 & #i2 < #i3)"
 
 // Se il client e' stato clonato e prova ad autenticarsi, allora il server lo rifiuta.
-// Falso: L'attaccante riallinea il contatore del client.
+// Vero: L'attaccante non puo' piu' riallineare l'hash chain del client.
 lemma ClonedClientCantAuthenticate:
   "All c s ch #i1 #i2.
     Reveal(c, s) @i1 &
@@ -107,16 +123,16 @@ lemma ClonedClientCantAuthenticate:
     ==>
     not (Ex #i3. ServerAccepts(s, c, ch) @i3 & #i2 < #i3)"
 
-// Riallineamento banale del contatore del client.
+// Riallineamento banale dell'hash del client.
 lemma ClientRealignmentExists:
   exists-trace
-  "Ex c s skey pkey ch f_ch #i1 #i2 #i3 #i4 #i5 #i6.
+  "Ex c s skey pkey s_ch f_ch #i1 #i2 #i3 #i4 #i5 #i6.
     ClientRegisters(c, s, skey, pkey) @i1 &
     Reveal(c, s) @i2 &
     ClientResponds(c, s, f_ch) @i3 &
-    ServerSendsCH(s, c, ch) @i4 &
-    ClientResponds(c, s, ch) @i5 &
-    ServerAccepts(s, c, ch) @i6 &
+    ServerSendsCH(s, c, s_ch) @i4 &
+    ClientResponds(c, s, s_ch) @i5 &
+    ServerAccepts(s, c, s_ch) @i6 &
     #i1 < #i2 & #i2 < #i3 & #i3 < #i4 & #i4 < #i5 & #i5 < #i6 &
     // Limita eventuali altre response invocate dall'attaccante
     (All ch #i.

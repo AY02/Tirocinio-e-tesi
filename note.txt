@@ -179,22 +179,24 @@ Cos'e' una chain hash?
 Dato un d_0 = H(...), allora d_i(v) = H(v|d_i-1).
 Il protocollo e' stateful, cioe' gli attori mantengono gli stati della chain hash.
 
-Setup del client e del server:
-- d_0 = H(random)
+Il server invia una challenge X1 al client.
+Il client calcola la response R1 e poi fa d_1_c = H(<X1, R1>) e lo invia al server.
+Il server riceve la response R1 e calcola anche lui d_1_s = H(<X1, R1>), verificando che d_1_s = d_1_c.
 
-Il server invia una challenge X al client.
-Il client calcola la response R e poi fa d_1_c = H(<X, R>, d_0) e lo invia al server.
-Il server riceve la response R e calcola anche lui d_1 = H(<X, R>|d_0), verificando che d_0 = d_0 del client.
+Il server invia una challenge X2 al client.
+Il client calcola la response R2 e poi fa d_2_c = H(<X2, R2>|d_1_c) e lo invia al server.
+Il server riceve la response R2 e calcola anche lui d_2_s = H(<X2, R2>|d_1_s), verificando che d_2_s = d_2_c.
 
-L'attaccante clona il client e copia la sua chain hash d.
-L'attaccante invia una challenge X al client.
-Il client calcola la response R1 e poi fa d_2 = H(<X, R1>, d_1).
+L'attaccante clona il client e copia la sua chain hash d_1_c, d_2_c.
+L'attaccante invia una challenge X3A al client.
+Il client calcola la response R3A e poi fa d_3_c = H(<X3A, R3A>|d_2_c).
 
-Il server invia una challenge Y al client.
-Il client calcola la response R2 e poi fa d_3 = H(<Y, R2>, d_2) e lo invia al server.
-Il server riceve la response R2 e calcola anche lui d_2 = H(<Y, R2>|d_3), verificando che d_1 = d_3 del client.
-Il server vede che d_1 != d_3 ==> Clone detection!
+Il server invia una challenge X3 al client.
+Il client calcola la response R3 e poi fa d_4_c = H(<X3, R2>, d_3_c) e lo invia al server.
+Il server riceve la response R3 e calcola anche lui d_3_s = H(<X3, R3>|d_2_s), verificando che d_3_s = d_4_c del client.
+Il server vede Clone detection!
 
+L'algoritmo e' vulnerabile anche a guasti.
 
 Ogni volta che il server riceve una response dal client, allora aggiorna il suo chain hash con la risposta del client.
 ==> Accumulatore crittografico.
