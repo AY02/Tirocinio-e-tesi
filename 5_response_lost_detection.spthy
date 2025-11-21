@@ -1,4 +1,4 @@
-theory HashChainWithDetection
+theory ResponseLostDetection
 begin
 
 builtins: signing, hashing, natural-numbers
@@ -88,6 +88,20 @@ rule Response:
     [ ClientH($C, $S, next_hash, %len %+ %1),
       Out(<'Response', $C, $S, r_ch, sig, next_hash>) ]
 
+// Il client invia la response, ma viene persa.
+rule ResponseLost:
+  let r_ch = <~nonce, ch>
+      sig = sign(r_ch, ~skey)
+      next_hash = h(<r_ch, sig, hash>)
+  in
+    [ In(<'Challenge', $S, $C, ch>),
+      !ClientSK($C, $S, ~skey),
+      ClientH($C, $S, hash, %len),
+      Fr(~nonce) ]
+  --[ ClientLosesResponse($C, $S, ch),
+      ClientLength($C, $S, %len %+ %1) ]->
+    [ ClientH($C, $S, next_hash, %len %+ %1) ]
+
 // Il server autentica il client.
 rule Verify:
   let r_ch = <nonce, ~ch>
@@ -103,11 +117,30 @@ rule Verify:
       ServerLength($S, $C, %len %+ %1) ]->
     [ ServerH($S, $C, new_hash_s, %len %+ %1) ]
 
+// Il server non autentica il client
+// perche' l'hash non e' corretto.
+rule VerifyFail:
+  let r_ch = <nonce, ~ch>
+      new_hash_s = h(<r_ch, sig, hash_s>)
+  in
+    [ In(<'Response', $C, $S, r_ch, sig, hash_c>),
+      ServerWaitingSIG($S, $C, ~ch),
+      ServerH($S, $C, hash_s, %len),
+      !ServerPK($S, $C, pkey) ]
+  --[ Neq(new_hash_s, hash_c),
+      Eq(verify(sig, r_ch, pkey), true),
+      ServerRejects($S, $C, ~ch) ]->
+    [ ]
+
 // Ogni volta che viene usato Eq(x, y), x deve essere uguale a y.
 restriction Equality:
   "All x y #i. Eq(x, y) @i ==> x = y"
 
-// -----------------------------LEMMI DA DIMOSTRARE-----------------------------
+// Ogni volta che viene usato Neq(x, x), si ha una contraddizione.
+restriction Inequality:
+  "All x #i. Neq(x, x) @i ==> F"
+
+// LEMMI----------------------------------------------------------
 
 // Diamo "conoscenza" all'oracolo sul fatto che le catene sono
 // strettamente crescenti.
@@ -159,5 +192,38 @@ lemma ClientRealignmentExists:
     ClientResponds(c, s, s_ch) @i5 &
     ServerAccepts(s, c, s_ch) @i6 &
     #i1 < #i2 & #i2 < #i3 & #i3 < #i4 & #i4 < #i5 & #i5 < #i6"
+
+// Scenario catturato (banale):
+// L'attaccante fa fare delle response al client per impedire l'autenticazione.
+// Le fake response vengono fatte prima della response legittima.
+lemma FakeResponseRejectedExists:
+  exists-trace
+  "Ex c s ch #i1 #i2.
+    not (Ex #i. Reveal(c, s) @i) &
+    ClientResponds(c, s, ch) @i1 &
+    ServerRejects(s, c, ch) @i2 &
+    #i1 < #i2"
+
+// Scenario proposto: Il client invia due response su una challenge legittima.
+// La prima response viene persa, mentre la seconda arriva al server.
+lemma HonestResponseRejectedExists:
+  exists-trace
+  "Ex c s ch #i1 #i2 #i3.
+    not (Ex #i. Reveal(c, s) @i) &
+    ClientLosesResponse(c, s, ch) @i1 &
+    ClientResponds(c, s, ch) @i2 &
+    ServerRejects(s, c, ch) @i3 &
+    #i1 < #i2 & #i2 < #i3"
+
+// Se il client (non clonato) perde una response e ne invia un'altra,
+// allora il server non lo autentichera' mai.
+lemma ResponseFailureDetection:
+  "All c s ch #i1 #i2.
+    not (Ex #i. Reveal(c, s) @i) &
+    ClientLosesResponse(c, s, ch) @i1 &
+    ClientResponds(c, s, ch) @i2 &
+    #i1 < #i2
+    ==>
+    not (Ex #i3. ServerAccepts(s, c, ch) @i3 & #i2 < #i3)"
 
 end

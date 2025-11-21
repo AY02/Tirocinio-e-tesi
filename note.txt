@@ -233,3 +233,84 @@ Quando faccio il cloning, l'attaccante prende anche tutte le tracce salvate dal 
 
 (Non ha resinking, "se faccio delle response")
 Nella vita reale esistono accumulatori a bassa memoria con crittografia asimmetrica.
+
+
+
+E' sicuro finquando che la firma e' suf-cma.
+
+
+euf-cma => 
+
+
+ECDSA E' EUF-cma
+La mia firma è (s, R)
+Quando genero una firma s, in realta' prendo il modulo di s.
+Il server rifiuta gli s < p/2
+
+Da studiare:
+- Curve ellittiche
+- EUF-CMA
+- SUF-CMA
+- ECDSA
+- Collegarlo con la vulnerabilita' della non autenticita' dell'hash
+
+
+/*
+
+
+Start:
+Premessa
+Inizio()
+Loop()
+
+Loop: [induction]
+Loop()
+Iterazione()
+Loop()
+
+
+Se c'è un loop(), allora c'è un Inizio()
+
+// Trovare una traccia in cui la verify fallisce anche se avviene tutto correttamente
+// Faccio tante response, ma l'autenticazione funziona lo stesso
+
+VerifyFalse
+
+Difetto di hash chain:
+Non sono resistenti a perdite di risposte.
+Se il client perde una response, allora non riesce piu' ad autenticarsi.
+vogliamo che:
+1) Tamarin si accorge che una response viene persa
+2) 
+
+Se esiste una response per cui non c'e' una verify con successo, ma esiste una response successiva con una verify false,
+allora 
+
+Tre eventi:
+- Response 1 persa
+- Response 2
+- Verify fallita
+
+Se il server riceve una risposta legittima, allora lo accetta.
+Deve esistere un caso in cui, per una procedura corretta, l'avversario vince se:
+- Response legittima
+- Verify con risposta legittima ed esce falso, allora l'avversario vince
+
+In realta' lasciamo a tamarin capire che deve fare prima una response fallita.
+
+
+Ci serve il modello perfetto e ideale:
+- Clone detection
+- Response Failure detection
+- No reallineamento
+- No MITM
+
+Se ho tutta la traccia, allora posso fare una relazione d'ordine sull'hash chain.
+Tutto lo storico noto ad S, deve essere noto anche a C.
+Non viceversa.
+perche' C registra anche risposte di challenge non autentiche.
+Non servono al server.
+
+Storico di transazioni ==> Hash chain
+
+*/
